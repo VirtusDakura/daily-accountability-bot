@@ -1,0 +1,25 @@
+# Render.com deployment configuration
+# https://render.com/docs/yaml-spec
+
+services:
+  - type: web
+    name: daily-accountability-bot
+    env: node
+    plan: free
+    buildCommand: npm install
+    startCommand: npm start
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: PORT
+        value: 10000
+      - key: WHATSAPP_TOKEN
+        sync: false  # Set manually in Render dashboard
+      - key: PHONE_NUMBER_ID
+        sync: false
+      - key: VERIFY_TOKEN
+        sync: false
+      - key: ALLOWED_PHONE
+        sync: false
+      - key: REMINDER_TIME
+        value: "0 20 * * *"

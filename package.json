@@ -2,7 +2,7 @@
   "name": "daily-accountability-bot",
   "version": "1.0.0",
   "description": "A WhatsApp-based accountability bot that forces daily programming check-ins, tracks consistency, and captures daily learning reflections.",
-  "main": "index.js",
+  "main": "src/index.js",
   "scripts": {
     "start": "node src/index.js",
     "dev": "nodemon src/index.js",
@@ -12,10 +12,18 @@
     "type": "git",
     "url": "git+https://github.com/VirtusDakura/daily-accountability-bot.git"
   },
-  "keywords": [],
-  "author": "",
+  "keywords": [
+    "whatsapp",
+    "bot",
+    "accountability",
+    "streak"
+  ],
+  "author": "VirtusDakura",
   "license": "ISC",
   "type": "module",
+  "engines": {
+    "node": ">=18.0.0"
+  },
   "bugs": {
     "url": "https://github.com/VirtusDakura/daily-accountability-bot/issues"
   },
@@ -24,8 +32,6 @@
     "axios": "^1.13.2",
     "dotenv": "^17.2.3",
     "express": "^5.2.1",
-    "mongoose": "^9.0.2",
-    "ngrok": "^5.0.0-beta.2",
     "node-cron": "^4.2.1"
   },
   "devDependencies": {
