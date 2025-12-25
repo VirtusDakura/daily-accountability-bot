@@ -44,14 +44,8 @@ const userSchema = new mongoose.Schema({
     longestStreak: { type: Number, default: 0 },
     dailyLog: [dailyLogSchema],
 
-    createdAt: { type: Date, default: Date.now },
-    updatedAt: { type: Date, default: Date.now }
-});
-
-// Update the updatedAt timestamp before saving
-userSchema.pre('save', function (next) {
-    this.updatedAt = new Date();
-    next();
+}, {
+    timestamps: true  // Automatically manage createdAt and updatedAt
 });
 
 const User = mongoose.model('User', userSchema);
