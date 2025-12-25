@@ -25,6 +25,7 @@
     "dotenv": "^17.2.3",
     "express": "^5.2.1",
     "mongoose": "^9.0.2",
+    "ngrok": "^5.0.0-beta.2",
     "node-cron": "^4.2.1"
   },
   "devDependencies": {
