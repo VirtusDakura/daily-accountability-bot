@@ -1,4 +1,9 @@
+import dotenv from "dotenv";
+dotenv.config();
+
 import express from "express";
+import { sendMessage } from "./services/whatsapp.js";
+
 
 const app = express();
 const PORT = 3000;
@@ -28,9 +33,22 @@ app.get("/webhook", (req, res) => {
     }
 });
 
-// Receive messages later
-app.post("/webhook", (req, res) => {
-    console.log(JSON.stringify(req.body, null, 2));
+// Receive WhatsApp messages
+app.post("/webhook", async (req, res) => {
+    const message = req.body.entry?.[0]?.changes?.[0]?.value?.messages?.[0];
+
+    if (message?.text?.body) {
+        const from = message.from;
+        const text = message.text.body.toLowerCase();
+
+        if (text === "hi" || text === "hello") {
+            await sendMessage(
+                from,
+                "👋 Hey Virtus!\nDid you code today?\n\nReply with:\n- done\n- status\n- learned"
+            );
+        }
+    }
+
     res.sendStatus(200);
 });
 
