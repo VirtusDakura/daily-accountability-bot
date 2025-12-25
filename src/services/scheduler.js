@@ -1,5 +1,9 @@
 /**
- * Scheduler - Morning motivation & Evening accountability
+ * Scheduler - Morning motivation, Evening accountability, Weekly summary
+ * 
+ * CRON JOBS:
+ * - Every minute: Check for morning/evening reminders
+ * - Every Sunday 10 AM: Send weekly AI-powered summary (opt-in)
  */
 
 import cron from 'node-cron';
@@ -10,10 +14,14 @@ import {
     markMorningReminderSent,
     markEveningReminderSent,
     setConversationState,
-    createTodaysLog
+    createTodaysLog,
+    getAllUsersForWeeklySummary,
+    getWeeklyStats
 } from './storage.js';
 import { getTodayDate } from '../utils/helpers.js';
 import { getQuoteOfTheDay } from '../utils/quotes.js';
+// AI Coach - optional, for weekly summaries
+import { getWeeklySummary } from '../ai/coach.js';
 
 /**
  * Morning reminder - Start with quote, ask how they're feeling
@@ -92,6 +100,55 @@ async function sendEveningReminder(user) {
 }
 
 /**
+ * Weekly summary - AI-powered reflection on the week
+ * Only runs if AI_WEEKLY_SUMMARY=true
+ */
+async function sendWeeklySummaries() {
+    if (process.env.AI_WEEKLY_SUMMARY !== 'true') {
+        console.log('[Weekly] AI weekly summary disabled');
+        return;
+    }
+
+    try {
+        const users = await getAllUsersForWeeklySummary();
+        console.log(`[Weekly] Sending summaries to ${users.length} users`);
+
+        for (const user of users) {
+            const stats = await getWeeklyStats(user.phone);
+            const name = user.name || 'friend';
+
+            // Build summary data for AI
+            const weekData = {
+                completed: stats.completed,
+                missed: stats.missed,
+                blockers: stats.blockers
+            };
+
+            // Get AI-generated summary
+            const aiSummary = await getWeeklySummary(weekData);
+
+            const message = `📊 *${name}'s Weekly Reflection*
+
+${aiSummary}
+
+Have a great week ahead! 🚀`;
+
+            try {
+                await sendMessage(user.phone, message);
+                console.log(`[Weekly] Sent to ${name}`);
+            } catch (error) {
+                console.error(`[Weekly] Failed for ${user.phone}:`, error.message);
+            }
+
+            // Small delay between messages
+            await new Promise(r => setTimeout(r, 1000));
+        }
+    } catch (error) {
+        console.error('[Weekly]', error.message);
+    }
+}
+
+/**
  * Check and send reminders every minute
  */
 async function checkAndSendReminders() {
@@ -115,6 +172,11 @@ async function checkAndSendReminders() {
 }
 
 export function initScheduler() {
+    // Check for reminders every minute
     cron.schedule('* * * * *', checkAndSendReminders);
-    console.log('[Scheduler] Ready - checking every minute');
+
+    // Weekly summary - Sundays at 10:00 AM
+    cron.schedule('0 10 * * 0', sendWeeklySummaries);
+
+    console.log('[Scheduler] Ready - reminders every minute, weekly summary Sundays 10 AM');
 }

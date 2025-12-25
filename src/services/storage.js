@@ -221,3 +221,43 @@ export async function resetUserData(phone) {
     user.conversationState = null;
     await user.save();
 }
+
+// ========== WEEKLY SUMMARY FUNCTIONS ==========
+
+/**
+ * Get all users who should receive weekly summary
+ * Only users who have completed onboarding and have logs
+ */
+export async function getAllUsersForWeeklySummary() {
+    return await User.find({
+        onboardingComplete: true,
+        'dailyLog.0': { $exists: true }  // Has at least one log entry
+    }).catch(() => []);
+}
+
+/**
+ * Get weekly stats for a user
+ * @param {string} phone - User's phone
+ * @returns {Object} { completed, missed, blockers }
+ */
+export async function getWeeklyStats(phone) {
+    const user = await getUserData(phone);
+
+    // Get logs from last 7 days
+    const weekAgo = new Date();
+    weekAgo.setDate(weekAgo.getDate() - 7);
+    const weekAgoStr = weekAgo.toISOString().split('T')[0];
+
+    const weekLogs = user.dailyLog.filter(log => log.date >= weekAgoStr);
+
+    const completed = weekLogs.filter(l => l.coded === true).length;
+    const missed = weekLogs.filter(l => l.coded === false).length;
+
+    // Extract blockers (reasons for not coding)
+    const blockers = weekLogs
+        .filter(l => l.whyNot)
+        .map(l => l.whyNot)
+        .slice(0, 3);  // Max 3 blockers
+
+    return { completed, missed, blockers };
+}

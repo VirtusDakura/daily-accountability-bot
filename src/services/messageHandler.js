@@ -1,6 +1,10 @@
 /**
  * Message Handler - Your accountability partner's brain
  * Conversational, personal, encouraging but firm
+ * 
+ * AI Integration Points:
+ * - what_learned: AI reflects on user's learning
+ * - why_not: AI acknowledges reason without judgment
  */
 
 import { sendMessage } from './whatsapp.js';
@@ -25,6 +29,8 @@ import {
     resetUserData
 } from './storage.js';
 import { formatStreakEmoji, parseTime } from '../utils/helpers.js';
+// AI Coach - optional, non-blocking
+import { getReflectionFeedback, getEncouragement } from '../ai/coach.js';
 
 export async function handleMessage(from, text) {
     const user = await getUserData(from);
@@ -238,10 +244,14 @@ Reply *yes* or *no*`);
                 celebration = `${emoji} Day *${stats.currentStreak}* complete!`;
             }
 
+            // AI INTEGRATION: Get personalized reflection feedback
+            const aiFeedback = await getReflectionFeedback(input, 'yes');
+
             await sendMessage(from, `${celebration}
 
-Today's learning logged:
 📚 _"${input.substring(0, 80)}${input.length > 80 ? '...' : ''}"_
+
+${aiFeedback}
 
 Rest well, ${stats.name}. See you tomorrow! ✌️`);
             break;
@@ -249,14 +259,14 @@ Rest well, ${stats.name}. See you tomorrow! ✌️`);
         case 'why_not':
             await saveWhyNot(from, input);
 
-            // Acknowledge but encourage
-            await sendMessage(from, `I hear you, ${user.name}.
+            // AI INTEGRATION: Get personalized acknowledgment (non-judgmental)
+            const aiAcknowledge = await getReflectionFeedback(input, 'no');
 
-Life happens. What matters is what we do next.
+            await sendMessage(from, `${aiAcknowledge}
 
-Tomorrow at ${user.morningReminderTime}, we start fresh. No guilt, just a new opportunity.
+Tomorrow at ${user.morningReminderTime}, we start fresh.
 
-Get some rest. We go again. 💪`);
+Rest well, ${user.name}. We go again. 💪`);
             break;
 
         default:
