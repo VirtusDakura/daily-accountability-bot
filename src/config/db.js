@@ -7,13 +7,13 @@ import mongoose from 'mongoose';
 
 /**
  * Connect to MongoDB
- * Uses MONGODB_URI or MONGO_URI from environment variables
+ * Uses MONGODB_URI from environment variables
  */
 export async function connectDB() {
-    const uri = process.env.MONGODB_URI || process.env.MONGO_URI;
+    const uri = process.env.MONGODB_URI;
 
     if (!uri) {
-        console.error('[Database] MONGODB_URI or MONGO_URI not set in environment variables');
+        console.error('[Database] MONGODB_URI not set in environment variables');
         process.exit(1);
     }
 

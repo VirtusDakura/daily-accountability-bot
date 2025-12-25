@@ -1,6 +1,6 @@
 /**
  * Helper utilities for the Daily Accountability Bot
- * Contains date formatting and validation helpers
+ * Contains date formatting and parsing helpers
  */
 
 /**
@@ -29,6 +29,57 @@ export function getYesterdayDate() {
 }
 
 /**
+ * Parse a time string into HH:MM format (24-hour)
+ * Accepts formats like: 7:00, 07:00, 7:00 AM, 7:00 PM, 19:00
+ * @param {string} timeStr - Time string to parse
+ * @returns {string|null} Time in HH:MM format or null if invalid
+ */
+export function parseTime(timeStr) {
+    if (!timeStr) return null;
+
+    const input = timeStr.trim().toUpperCase();
+
+    // Match various time formats
+    const patterns = [
+        /^(\d{1,2}):(\d{2})\s*(AM|PM)?$/i,  // 7:00, 07:00, 7:00 AM, 7:00 PM
+        /^(\d{1,2})\s*(AM|PM)$/i,            // 7 AM, 7PM
+    ];
+
+    for (const pattern of patterns) {
+        const match = input.match(pattern);
+        if (match) {
+            let hours = parseInt(match[1], 10);
+            let minutes = match[2] && !isNaN(match[2]) ? parseInt(match[2], 10) : 0;
+            const meridiem = match[3] || match[2];
+
+            // Handle AM/PM
+            if (meridiem) {
+                const isPM = meridiem.toUpperCase() === 'PM';
+                const isAM = meridiem.toUpperCase() === 'AM';
+
+                if (isPM && hours !== 12) {
+                    hours += 12;
+                } else if (isAM && hours === 12) {
+                    hours = 0;
+                }
+
+                // If meridiem was in match[2], minutes should be 0
+                if (isNaN(parseInt(match[2], 10))) {
+                    minutes = 0;
+                }
+            }
+
+            // Validate hours and minutes
+            if (hours >= 0 && hours <= 23 && minutes >= 0 && minutes <= 59) {
+                return `${String(hours).padStart(2, '0')}:${String(minutes).padStart(2, '0')}`;
+            }
+        }
+    }
+
+    return null;
+}
+
+/**
  * Check if a date string is today
  * @param {string} dateString - Date in YYYY-MM-DD format
  * @returns {boolean}
@@ -49,7 +100,7 @@ export function isYesterday(dateString) {
 /**
  * Format a streak message with emoji based on length
  * @param {number} streak - Current streak count
- * @returns {string} Formatted streak message
+ * @returns {string} Formatted streak emoji
  */
 export function formatStreakEmoji(streak) {
     if (streak === 0) return "🔴";
@@ -58,4 +109,19 @@ export function formatStreakEmoji(streak) {
     if (streak < 14) return "🔥";
     if (streak < 30) return "⚡";
     return "🏆";
+}
+
+/**
+ * Format time for display (convert 24h to 12h if needed)
+ * @param {string} time - Time in HH:MM format
+ * @returns {string} Formatted time string
+ */
+export function formatTimeDisplay(time) {
+    if (!time) return 'Not set';
+
+    const [hours, minutes] = time.split(':').map(Number);
+    const suffix = hours >= 12 ? 'PM' : 'AM';
+    const displayHours = hours % 12 || 12;
+
+    return `${displayHours}:${String(minutes).padStart(2, '0')} ${suffix}`;
 }

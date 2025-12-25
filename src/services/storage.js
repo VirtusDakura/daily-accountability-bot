@@ -18,11 +18,8 @@ export async function getUserData(phone) {
             // Create new user if doesn't exist
             user = new User({
                 phone,
-                lastResponseDate: null,
-                currentStreak: 0,
-                longestStreak: 0,
-                dailyLog: [],
-                awaitingLearning: false
+                onboardingComplete: false,
+                onboardingStep: 'welcome'
             });
             await user.save();
         }
@@ -35,16 +32,124 @@ export async function getUserData(phone) {
 }
 
 /**
- * Save user data to database
- * @param {Object} userData - User document to save
+ * Get all users who need morning reminder at current time
+ * @param {string} currentTime - Current time in HH:MM format
+ * @param {string} today - Today's date in YYYY-MM-DD format
+ * @returns {Array} Array of users needing reminder
  */
-export async function saveUserData(userData) {
+export async function getUsersForMorningReminder(currentTime, today) {
     try {
-        await userData.save();
+        return await User.find({
+            onboardingComplete: true,
+            morningReminderTime: currentTime,
+            $or: [
+                { lastMorningReminder: { $ne: today } },
+                { lastMorningReminder: null }
+            ]
+        });
     } catch (error) {
-        console.error('[Storage] Error saving user data:', error);
-        throw error;
+        console.error('[Storage] Error getting users for morning reminder:', error);
+        return [];
     }
+}
+
+/**
+ * Get all users who need evening reminder at current time
+ * @param {string} currentTime - Current time in HH:MM format
+ * @param {string} today - Today's date in YYYY-MM-DD format
+ * @returns {Array} Array of users needing reminder
+ */
+export async function getUsersForEveningReminder(currentTime, today) {
+    try {
+        return await User.find({
+            onboardingComplete: true,
+            eveningReminderTime: currentTime,
+            lastResponseDate: { $ne: today }, // Haven't logged today
+            $or: [
+                { lastEveningReminder: { $ne: today } },
+                { lastEveningReminder: null }
+            ]
+        });
+    } catch (error) {
+        console.error('[Storage] Error getting users for evening reminder:', error);
+        return [];
+    }
+}
+
+/**
+ * Mark morning reminder as sent
+ * @param {string} phone - User's phone number
+ * @param {string} today - Today's date
+ */
+export async function markMorningReminderSent(phone, today) {
+    await User.updateOne({ phone }, { lastMorningReminder: today });
+}
+
+/**
+ * Mark evening reminder as sent
+ * @param {string} phone - User's phone number
+ * @param {string} today - Today's date
+ */
+export async function markEveningReminderSent(phone, today) {
+    await User.updateOne({ phone }, { lastEveningReminder: today });
+}
+
+/**
+ * Update user onboarding step
+ * @param {string} phone - User's phone number
+ * @param {string} step - New onboarding step
+ */
+export async function setOnboardingStep(phone, step) {
+    const user = await getUserData(phone);
+    user.onboardingStep = step;
+    if (step === 'complete') {
+        user.onboardingComplete = true;
+    }
+    await user.save();
+}
+
+/**
+ * Update user name
+ * @param {string} phone - User's phone number
+ * @param {string} name - User's name
+ */
+export async function setUserName(phone, name) {
+    const user = await getUserData(phone);
+    user.name = name;
+    await user.save();
+}
+
+/**
+ * Update morning reminder time
+ * @param {string} phone - User's phone number
+ * @param {string} time - Time in HH:MM format
+ */
+export async function setMorningReminderTime(phone, time) {
+    const user = await getUserData(phone);
+    user.morningReminderTime = time;
+    await user.save();
+}
+
+/**
+ * Update evening reminder time
+ * @param {string} phone - User's phone number
+ * @param {string} time - Time in HH:MM format
+ */
+export async function setEveningReminderTime(phone, time) {
+    const user = await getUserData(phone);
+    user.eveningReminderTime = time;
+    await user.save();
+}
+
+/**
+ * Set awaiting response type
+ * @param {string} phone - User's phone number
+ * @param {string|null} responseType - Type of response awaited
+ */
+export async function setAwaitingResponse(phone, responseType) {
+    const user = await getUserData(phone);
+    user.awaitingResponse = responseType;
+    await user.save();
 }
 
 /**
@@ -52,9 +157,10 @@ export async function saveUserData(userData) {
  * @param {string} phone - User's phone number
  * @param {string} date - Date in YYYY-MM-DD format
  * @param {boolean} coded - Whether user coded that day
- * @param {string|null} learning - Optional learning note
+ * @param {string|null} whatCoded - What they coded
+ * @param {string|null} learning - What they learned
  */
-export async function addDailyLog(phone, date, coded, learning = null) {
+export async function addDailyLog(phone, date, coded, whatCoded = null, learning = null) {
     const user = await getUserData(phone);
 
     // Check if entry already exists for this date
@@ -63,6 +169,7 @@ export async function addDailyLog(phone, date, coded, learning = null) {
     const logEntry = {
         date,
         coded,
+        whatCoded,
         learning,
         timestamp: new Date()
     };
@@ -85,42 +192,68 @@ export async function addDailyLog(phone, date, coded, learning = null) {
 }
 
 /**
+ * Update today's log with what was coded
+ * @param {string} phone - User's phone number
+ * @param {string} whatCoded - What they coded
+ */
+export async function updateWhatCoded(phone, whatCoded) {
+    const user = await getUserData(phone);
+    const today = new Date().toISOString().split('T')[0];
+
+    const todayLog = user.dailyLog.find(log => log.date === today);
+    if (todayLog) {
+        todayLog.whatCoded = whatCoded;
+    }
+    await user.save();
+}
+
+/**
+ * Update today's log with learning
+ * @param {string} phone - User's phone number
+ * @param {string} learning - What they learned
+ */
+export async function updateLearning(phone, learning) {
+    const user = await getUserData(phone);
+    const today = new Date().toISOString().split('T')[0];
+
+    const todayLog = user.dailyLog.find(log => log.date === today);
+    if (todayLog) {
+        todayLog.learning = learning;
+    }
+    user.awaitingResponse = null;
+    await user.save();
+}
+
+/**
  * Update streak based on today's response
  * @param {string} phone - User's phone number
  * @param {boolean} coded - Whether user coded today
- * @param {string} lastDate - Last response date
  * @returns {Object} Updated streak info
  */
-export async function updateStreak(phone, coded, lastDate) {
+export async function updateStreak(phone, coded) {
     const user = await getUserData(phone);
     const today = new Date();
     const todayStr = today.toISOString().split('T')[0];
+    const lastDate = user.lastResponseDate;
 
     if (coded) {
-        // Check if last response was yesterday (streak continues)
         if (lastDate) {
             const lastDateObj = new Date(lastDate);
             const diffDays = Math.floor((today - lastDateObj) / (1000 * 60 * 60 * 24));
 
             if (diffDays === 1) {
-                // Consecutive day - increment streak
                 user.currentStreak += 1;
             } else if (diffDays > 1) {
-                // Streak broken - reset to 1
                 user.currentStreak = 1;
             }
-            // If diffDays === 0, they already logged today
         } else {
-            // First ever log
             user.currentStreak = 1;
         }
 
-        // Update longest streak if current beats it
         if (user.currentStreak > user.longestStreak) {
             user.longestStreak = user.currentStreak;
         }
     } else {
-        // User didn't code - reset streak
         user.currentStreak = 0;
     }
 
@@ -147,45 +280,6 @@ export async function hasRespondedToday(phone) {
 }
 
 /**
- * Set awaiting learning state
- * @param {string} phone - User's phone number
- * @param {boolean} awaiting
- */
-export async function setAwaitingLearning(phone, awaiting) {
-    const user = await getUserData(phone);
-    user.awaitingLearning = awaiting;
-    await user.save();
-}
-
-/**
- * Check if bot is awaiting learning input
- * @param {string} phone - User's phone number
- * @returns {boolean}
- */
-export async function isAwaitingLearning(phone) {
-    const user = await getUserData(phone);
-    return user.awaitingLearning === true;
-}
-
-/**
- * Save learning note to today's log
- * @param {string} phone - User's phone number
- * @param {string} learning - Learning note text
- */
-export async function saveLearningNote(phone, learning) {
-    const user = await getUserData(phone);
-    const today = new Date().toISOString().split('T')[0];
-
-    const todayLog = user.dailyLog.find(log => log.date === today);
-    if (todayLog) {
-        todayLog.learning = learning;
-    }
-
-    user.awaitingLearning = false;
-    await user.save();
-}
-
-/**
  * Get last N days of logs
  * @param {string} phone - User's phone number
  * @param {number} days - Number of days to retrieve  
@@ -206,6 +300,14 @@ export async function resetUserData(phone) {
     user.longestStreak = 0;
     user.dailyLog = [];
     user.lastResponseDate = null;
-    user.awaitingLearning = false;
+    user.awaitingResponse = null;
     await user.save();
+}
+
+/**
+ * Get total user count
+ * @returns {number} Total users
+ */
+export async function getTotalUsers() {
+    return await User.countDocuments({ onboardingComplete: true });
 }
