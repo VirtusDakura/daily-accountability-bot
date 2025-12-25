@@ -21,8 +21,8 @@ import { initScheduler } from "./services/scheduler.js";
 const app = express();
 const PORT = process.env.PORT || 3000;
 
-// Verify token for Meta webhook verification (using WHATSAPP_TOKEN)
-const VERIFY_TOKEN = process.env.WHATSAPP_TOKEN;
+// Verify token for Meta webhook verification
+const VERIFY_TOKEN = process.env.VERIFY_TOKEN || "WHATSAPP_TOKEN";
 
 // ==================== MIDDLEWARE ====================
 
