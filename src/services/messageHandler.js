@@ -1,7 +1,6 @@
 /**
- * Message Handler Service - Core bot logic
- * Processes incoming WhatsApp messages and generates responses
- * Handles onboarding, daily check-ins, and conversation flows
+ * Message Handler - Your accountability partner's brain
+ * Conversational, personal, encouraging but firm
  */
 
 import { sendMessage } from './whatsapp.js';
@@ -11,444 +10,487 @@ import {
     setUserName,
     setMorningReminderTime,
     setEveningReminderTime,
-    setAwaitingResponse,
-    addDailyLog,
-    updateWhatCoded,
-    updateLearning,
-    updateStreak,
-    hasRespondedToday,
+    setConversationState,
+    saveMorningMood,
+    saveTodaysPlan,
+    saveEveningMood,
+    saveCodedResponse,
+    saveWhyNot,
+    saveWhatDone,
+    saveWhatLearned,
+    getTodaysLog,
     getRecentLogs,
+    hasLoggedToday,
+    canLogCompletion,
     resetUserData
 } from './storage.js';
-import { getTodayDate, formatStreakEmoji, parseTime } from '../utils/helpers.js';
+import { formatStreakEmoji, parseTime } from '../utils/helpers.js';
 
-/**
- * Main message handler - processes incoming messages
- * @param {string} from - Sender's phone number
- * @param {string} text - Message text
- */
 export async function handleMessage(from, text) {
     const user = await getUserData(from);
     const input = text.trim();
     const inputLower = input.toLowerCase();
 
-    // Check if user is in onboarding
+    // Onboarding
     if (!user.onboardingComplete) {
         await handleOnboarding(from, user, input);
         return;
     }
 
-    // Check if we're awaiting a specific response
-    if (user.awaitingResponse) {
-        await handleAwaitingResponse(from, user, input);
+    // Conversation flow
+    if (user.conversationState) {
+        await handleConversation(from, user, input, inputLower);
         return;
     }
 
-    // Route to appropriate handler based on command
+    // Commands
     switch (inputLower) {
         case 'hi':
         case 'hello':
-        case 'start':
         case 'hey':
-            await handleStart(from, user);
+            await handleGreeting(from, user);
             break;
-
         case 'yes':
         case 'y':
         case 'done':
-        case '✅':
-            await handleYes(from, user);
+            await handleYesCommand(from, user);
             break;
-
         case 'no':
         case 'n':
-        case 'nope':
-        case '❌':
-            await handleNo(from, user);
+            await handleNoCommand(from, user);
             break;
-
         case 'status':
         case 'stats':
-        case 'streak':
             await handleStatus(from, user);
             break;
-
         case 'summary':
-        case 'report':
-            await handleSummary(from);
+        case 'week':
+            await handleSummary(from, user);
             break;
-
-        case 'settings':
-            await handleSettings(from, user);
-            break;
-
         case 'help':
-        case '?':
-            await handleHelp(from);
+            await handleHelp(from, user);
             break;
-
         case 'reset':
             await handleReset(from, user);
             break;
-
         case 'confirm reset':
-            await handleConfirmReset(from);
+            await resetUserData(from);
+            await sendMessage(from, `Fresh start! 🌱\n\nType *hi* when ready.`);
             break;
-
         default:
-            await handleFallback(from);
-            break;
+            await handleUnknown(from, user);
     }
 }
 
-/**
- * Handle onboarding flow for new users
- */
+// ========== ONBOARDING ==========
+
 async function handleOnboarding(from, user, input) {
     switch (user.onboardingStep) {
         case 'welcome':
-            // First interaction - welcome and ask for name
-            const welcomeMsg = `👋 *Welcome to Code Accountability Bot!*
+            await sendMessage(from, `Hey! 👋
 
-I'm here to help you build a consistent coding habit.
+Welcome to your coding accountability partner.
 
-Every day, I'll send you:
-🌅 *Morning* - A motivational reminder to code
-🌙 *Evening* - A check-in to log your progress
+I'm here to help you stay consistent. Every day:
+🌅 Morning - I'll ask your goal
+🌙 Evening - We check if you crushed it
 
-Let's get you set up!
+It's simple. It works.
 
-*What should I call you?*`;
-            await sendMessage(from, welcomeMsg);
+*What's your first name?*`);
             await setOnboardingStep(from, 'ask_name');
             break;
 
         case 'ask_name':
-            // Save name and ask for morning reminder time
-            await setUserName(from, input);
-            const morningMsg = `Nice to meet you, *${input}*! 🎉
+            const name = input.split(' ')[0];
+            await setUserName(from, name);
+            await sendMessage(from, `Nice to meet you, ${name}! 🙌
 
-Now let's set up your reminders.
+*When do you want your morning check-in?*
 
-*What time should I send your morning motivation?*
+This is when I'll ask about your plan for the day.
 
-Reply with a time like:
-• 7:00
-• 08:30
-• 9:00
-
-(24-hour format works too: 07:00, 20:00)`;
-            await sendMessage(from, morningMsg);
-            await setOnboardingStep(from, 'ask_morning_time');
+Reply like: 7:00 or 8:30 AM`);
+            await setOnboardingStep(from, 'ask_morning');
             break;
 
-        case 'ask_morning_time':
-            // Parse and save morning time
-            const morningTime = parseTime(input);
-            if (!morningTime) {
-                await sendMessage(from, "⚠️ I couldn't understand that time. Please try again.\n\nExamples: 7:00, 08:30, 9:00 AM");
+        case 'ask_morning':
+            const mTime = parseTime(input);
+            if (!mTime) {
+                await sendMessage(from, `Hmm, try: 7:00 or 8 AM`);
                 return;
             }
-            await setMorningReminderTime(from, morningTime);
+            await setMorningReminderTime(from, mTime);
+            await sendMessage(from, `Morning check-in: *${mTime}* ☀️
 
-            const eveningMsg = `✅ Morning reminder set for *${morningTime}*
+*When should I check if you coded?*
 
-*What time should I check in with you in the evening?*
+This should be after you're done for the day.
 
-This is when I'll ask if you coded today.
-
-Examples: 20:00, 8:00 PM, 21:30`;
-            await sendMessage(from, eveningMsg);
-            await setOnboardingStep(from, 'ask_evening_time');
+Reply like: 20:00 or 9 PM`);
+            await setOnboardingStep(from, 'ask_evening');
             break;
 
-        case 'ask_evening_time':
-            // Parse and save evening time, complete onboarding
-            const eveningTime = parseTime(input);
-            if (!eveningTime) {
-                await sendMessage(from, "⚠️ I couldn't understand that time. Please try again.\n\nExamples: 20:00, 8:00 PM, 21:30");
+        case 'ask_evening':
+            const eTime = parseTime(input);
+            if (!eTime) {
+                await sendMessage(from, `Try: 20:00 or 8 PM`);
                 return;
             }
-            await setEveningReminderTime(from, eveningTime);
+            await setEveningReminderTime(from, eTime);
             await setOnboardingStep(from, 'complete');
 
-            const completeMsg = `🎉 *You're all set!*
+            const u = await getUserData(from);
+            await sendMessage(from, `Perfect ${u.name}! You're all set. 🎯
 
-📅 *Your Schedule:*
-🌅 Morning motivation: *${user.morningReminderTime}*
-🌙 Evening check-in: *${eveningTime}*
+*Your Schedule:*
+🌅 ${u.morningReminderTime} - What's your plan?
+🌙 ${eTime} - Did you do it?
 
-*Commands you can use:*
-• *yes* - Log that you coded today
-• *no* - Log that you didn't code
-• *status* - View your streak
-• *summary* - Last 7 days
-• *settings* - Change reminder times
+*Note:* You can only log your day complete after ${eTime} - no shortcuts! 😉
+
+Commands:
+• *status* - Your stats
 • *help* - All commands
 
-Let's build that streak! 💪
-
-Type *yes* or *no* to log today's coding status.`;
-            await sendMessage(from, completeMsg);
+Let's build something great! 💪`);
             break;
     }
 }
 
-/**
- * Handle awaiting response (what coded, what learned)
- */
-async function handleAwaitingResponse(from, user, input) {
-    switch (user.awaitingResponse) {
-        case 'what_coded':
-            await updateWhatCoded(from, input);
-            await setAwaitingResponse(from, 'what_learned');
+// ========== CONVERSATION FLOW ==========
 
-            await sendMessage(from, `💻 Got it!
+async function handleConversation(from, user, input, inputLower) {
+    switch (user.conversationState) {
+        // MORNING FLOW
+        case 'morning_mood':
+            await saveMorningMood(from, input);
+            const moodResponse = getMoodResponse(input, user.name, 'morning');
+            await sendMessage(from, `${moodResponse}
 
-*What did you learn today?*
-(A brief note about something new you discovered)`);
+*What's the ONE thing you want to accomplish today?*
+(Keep it focused - one clear goal)`);
+            break;
+
+        case 'morning_plan':
+            await saveTodaysPlan(from, input);
+            await sendMessage(from, `📋 *Today's goal:*
+_"${input}"_
+
+I'll check in tonight to see how it went.
+
+Go make it happen, ${user.name}! 💪`);
+            break;
+
+        // EVENING FLOW
+        case 'evening_mood':
+            await saveEveningMood(from, input);
+            const todaysLog = await getTodaysLog(from);
+            const plan = todaysLog?.todaysPlan;
+
+            const eveningMoodResponse = getMoodResponse(input, user.name, 'evening');
+
+            if (plan) {
+                await sendMessage(from, `${eveningMoodResponse}
+
+This morning you said you'd work on:
+📋 _"${plan}"_
+
+*Did you get it done?*
+Reply *yes* or *no* - be honest!`);
+            } else {
+                await sendMessage(from, `${eveningMoodResponse}
+
+*Did you write any code today?*
+Reply *yes* or *no*`);
+            }
+            break;
+
+        case 'evening_check':
+            if (inputLower === 'yes' || inputLower === 'y') {
+                await handleYes(from, user);
+            } else if (inputLower === 'no' || inputLower === 'n') {
+                await handleNo(from, user);
+            } else {
+                await sendMessage(from, `Simple question, ${user.name}:\n\nDid you code today? *yes* or *no*`);
+            }
+            break;
+
+        case 'what_done':
+            await saveWhatDone(from, input);
+            await sendMessage(from, `Nice work! 👏
+
+*What did you learn?*
+(Even something small - every lesson counts)`);
             break;
 
         case 'what_learned':
-            await updateLearning(from, input);
+            await saveWhatLearned(from, input);
+            const stats = await getUserData(from);
+            const emoji = formatStreakEmoji(stats.currentStreak);
 
-            const finalMsg = `📝 *Logged!*
+            let celebration;
+            if (stats.currentStreak >= 7) {
+                celebration = `🔥 *${stats.currentStreak} DAYS!* You're on fire!`;
+            } else if (stats.currentStreak >= 3) {
+                celebration = `${emoji} *${stats.currentStreak} days* and building momentum!`;
+            } else {
+                celebration = `${emoji} Day *${stats.currentStreak}* complete!`;
+            }
 
-💻 Coded: ${user.dailyLog[user.dailyLog.length - 1]?.whatCoded || 'Yes'}
-📚 Learned: "${input.substring(0, 80)}${input.length > 80 ? '...' : ''}"
+            await sendMessage(from, `${celebration}
 
-${formatStreakEmoji(user.currentStreak)} Streak: *${user.currentStreak} day${user.currentStreak !== 1 ? 's' : ''}*
+Today's learning logged:
+📚 _"${input.substring(0, 80)}${input.length > 80 ? '...' : ''}"_
 
-Keep up the great work! See you tomorrow! 🚀`;
-            await sendMessage(from, finalMsg);
+Rest well, ${stats.name}. See you tomorrow! ✌️`);
             break;
+
+        case 'why_not':
+            await saveWhyNot(from, input);
+
+            // Acknowledge but encourage
+            await sendMessage(from, `I hear you, ${user.name}.
+
+Life happens. What matters is what we do next.
+
+Tomorrow at ${user.morningReminderTime}, we start fresh. No guilt, just a new opportunity.
+
+Get some rest. We go again. 💪`);
+            break;
+
+        default:
+            await setConversationState(from, null);
+            await handleUnknown(from, user);
     }
 }
 
-/**
- * Handle start/greeting command
- */
-async function handleStart(from, user) {
-    const name = user.name || 'there';
+// ========== COMMAND HANDLERS ==========
+
+async function handleGreeting(from, user) {
     const emoji = formatStreakEmoji(user.currentStreak);
+    const logged = await hasLoggedToday(from);
 
-    const message = `👋 Hey ${name}! Welcome back.
+    if (logged) {
+        await sendMessage(from, `Hey ${user.name}! 👋
 
-${emoji} Current streak: *${user.currentStreak} day${user.currentStreak !== 1 ? 's' : ''}*
+You've already logged today. ✅
+${emoji} Streak: *${user.currentStreak} days*
 
-Did you code today?
+See you tomorrow!`);
+    } else {
+        const canLog = await canLogCompletion(from);
+        if (canLog) {
+            await sendMessage(from, `Hey ${user.name}! 👋
 
-• *yes* - I coded today ✅
-• *no* - I didn't code today ❌
-• *status* - See your stats 📊`;
+${emoji} Current streak: *${user.currentStreak} days*
 
-    await sendMessage(from, message);
+Time to check in - did you code today?
+Reply *yes* or *no*`);
+            await setConversationState(from, 'evening_check');
+        } else {
+            await sendMessage(from, `Hey ${user.name}! 👋
+
+${emoji} Streak: *${user.currentStreak} days*
+
+You can log your day after ${user.eveningReminderTime}.
+I'll remind you then! 📲`);
+        }
+    }
 }
 
-/**
- * Handle YES response - user coded today
- */
+async function handleYesCommand(from, user) {
+    const logged = await hasLoggedToday(from);
+    if (logged) {
+        await sendMessage(from, `Already logged today! ✅\n\nYour streak is safe.`);
+        return;
+    }
+
+    const canLog = await canLogCompletion(from);
+    if (!canLog) {
+        await sendMessage(from, `Not so fast, ${user.name}! 😉
+
+You can log your day after ${user.eveningReminderTime}.
+
+Finish your work first, then we celebrate! 🎯`);
+        return;
+    }
+
+    await handleYes(from, user);
+}
+
+async function handleNoCommand(from, user) {
+    const logged = await hasLoggedToday(from);
+    if (logged) {
+        await sendMessage(from, `Already logged today.\n\nFresh start tomorrow!`);
+        return;
+    }
+
+    const canLog = await canLogCompletion(from);
+    if (!canLog) {
+        await sendMessage(from, `Hold on - the day isn't over yet!
+
+You still have time until ${user.eveningReminderTime}.
+
+Don't give up early, ${user.name}. 💪`);
+        return;
+    }
+
+    await handleNo(from, user);
+}
+
 async function handleYes(from, user) {
-    // Check if already logged today
-    if (await hasRespondedToday(from)) {
-        await sendMessage(from, "✅ You've already logged today. See you tomorrow! 👋\n\nType *status* to see your streak.");
-        return;
-    }
-
-    // Log the day and update streak
-    await addDailyLog(from, getTodayDate(), true);
-    const streakInfo = await updateStreak(from, true);
-
-    // Ask what they coded
-    await setAwaitingResponse(from, 'what_coded');
-
-    const emoji = formatStreakEmoji(streakInfo.currentStreak);
-
-    const message = `🎉 Awesome work today!
-
-${emoji} Streak: *${streakInfo.currentStreak} day${streakInfo.currentStreak !== 1 ? 's' : ''}*
-🏆 Best: *${streakInfo.longestStreak} days*
-
-*What did you work on today?*
-(e.g., "Built a REST API", "Fixed authentication bug")`;
-
-    await sendMessage(from, message);
-}
-
-/**
- * Handle NO response - user didn't code today
- */
-async function handleNo(from, user) {
-    if (await hasRespondedToday(from)) {
-        await sendMessage(from, "✅ You've already logged today. See you tomorrow! 👋\n\nType *status* to see your streak.");
-        return;
-    }
-
-    const previousStreak = user.currentStreak;
-
-    await addDailyLog(from, getTodayDate(), false);
-    await updateStreak(from, false);
+    const streakInfo = await saveCodedResponse(from, true);
+    const todaysLog = await getTodaysLog(from);
+    const plan = todaysLog?.todaysPlan;
 
     let message;
-    if (previousStreak > 0) {
-        message = `😔 That's okay, rest is important too.
+    if (plan) {
+        message = `🎉 You did it, ${user.name}!
 
-Your *${previousStreak}-day* streak has been reset.
+You said: _"${plan}"_
 
-💪 Tomorrow is a fresh start!
-Even 15 minutes counts.
-
-Type *status* anytime to check your stats.`;
+*What did you actually accomplish?*`;
     } else {
-        message = `👍 Thanks for being honest.
+        message = `🎉 Great work, ${user.name}!
 
-Tomorrow is a new day!
-Even small steps count.
-
-Type *status* anytime to check your stats.`;
+*What did you work on today?*`;
     }
 
     await sendMessage(from, message);
 }
 
-/**
- * Handle status command
- */
-async function handleStatus(from, user) {
-    const emoji = formatStreakEmoji(user.currentStreak);
-    const name = user.name || 'Coder';
+async function handleNo(from, user) {
+    const streak = user.currentStreak;
+    await saveCodedResponse(from, false);
 
-    const recentLogs = await getRecentLogs(from, 7);
-    const codedDays = recentLogs.filter(log => log.coded).length;
-    const consistency = recentLogs.length > 0
-        ? Math.round((codedDays / recentLogs.length) * 100)
-        : 0;
+    let message;
+    if (streak >= 7) {
+        message = `${user.name}, your *${streak}-day streak* just ended.
 
-    const message = `📊 *${name}'s Stats*
+I'm not going to sugarcoat it - that stings.
 
-${emoji} Current Streak: *${user.currentStreak}* day${user.currentStreak !== 1 ? 's' : ''}
-🏆 Longest Streak: *${user.longestStreak}* days
-📅 Last Check-in: ${user.lastResponseDate || 'Never'}
-📈 7-Day Consistency: ${consistency}%
+But I won't let you dwell on it either.
 
-${user.currentStreak >= 7 ? "🔥 You're on fire! Keep it up!" :
-            user.currentStreak > 0 ? "💪 Good progress! Stay consistent!" :
-                "🚀 Start a new streak today!"}`;
+*What happened today?*
+(Be honest - no excuses, just facts)`;
+    } else if (streak > 0) {
+        message = `Streak reset, ${user.name}.
+
+It happens. What matters is tomorrow.
+
+*What got in the way today?*
+(Understanding helps us plan better)`;
+    } else {
+        message = `No problem, ${user.name}.
+
+*What stopped you from coding today?*
+(No judgment, just curious)`;
+    }
 
     await sendMessage(from, message);
 }
 
-/**
- * Handle summary command
- */
-async function handleSummary(from) {
+async function handleStatus(from, user) {
+    const emoji = formatStreakEmoji(user.currentStreak);
+    const logs = await getRecentLogs(from, 7);
+    const coded = logs.filter(l => l.coded).length;
+
+    await sendMessage(from, `📊 *${user.name}'s Stats*
+
+${emoji} Current: *${user.currentStreak} days*
+🏆 Best: *${user.longestStreak} days*
+📅 This week: ${coded}/7
+💻 Total days coded: ${user.totalDaysCoded || 0}
+
+${user.currentStreak >= 7 ? "You're crushing it! 🔥" :
+            user.currentStreak > 0 ? "Building that streak! 🧱" :
+                "Ready to start? 🚀"}`);
+}
+
+async function handleSummary(from, user) {
     const logs = await getRecentLogs(from, 7);
 
-    if (logs.length === 0) {
-        await sendMessage(from, "📋 No logs yet. Reply *yes* or *no* to start logging!");
+    if (!logs.length) {
+        await sendMessage(from, `No logs yet, ${user.name}.\n\nLet's start building!`);
         return;
     }
 
-    let summary = "📋 *Last 7 Days*\n\n";
-
-    const reversedLogs = [...logs].reverse();
-
-    for (const log of reversedLogs) {
-        const icon = log.coded ? "✅" : "❌";
-        const what = log.whatCoded ? `\n   💻 ${log.whatCoded}` : "";
-        const learned = log.learning ? `\n   📚 ${log.learning}` : "";
-        summary += `${icon} ${log.date}${what}${learned}\n`;
+    let summary = `📋 *${user.name}'s Week*\n\n`;
+    for (const log of [...logs].reverse()) {
+        const icon = log.coded ? "✅" : (log.coded === false ? "❌" : "⏳");
+        const task = log.todaysPlan ? ` → ${log.todaysPlan.substring(0, 25)}...` : "";
+        summary += `${icon} ${log.date}${task}\n`;
     }
 
-    const codedDays = logs.filter(l => l.coded).length;
-    summary += `\n📊 Coded ${codedDays}/${logs.length} days`;
+    const coded = logs.filter(l => l.coded).length;
+    summary += `\n*${coded}/${logs.length} days* 💪`;
 
     await sendMessage(from, summary);
 }
 
-/**
- * Handle settings command
- */
-async function handleSettings(from, user) {
-    const message = `⚙️ *Your Settings*
+async function handleHelp(from, user) {
+    await sendMessage(from, `*${user.name}'s Commands:*
 
-👤 Name: *${user.name || 'Not set'}*
-🌅 Morning reminder: *${user.morningReminderTime}*
-🌙 Evening check-in: *${user.eveningReminderTime}*
+📝 *yes* - I coded today
+📝 *no* - I didn't code
+📊 *status* - My stats
+📋 *summary* - This week
+🔄 *reset* - Start over
 
-To change settings, start over with onboarding:
-Type *reset settings* (your streak will be preserved)
+*Schedule:*
+🌅 ${user.morningReminderTime} - Plan your day
+🌙 ${user.eveningReminderTime} - Log results
 
-Or type *reset* to clear all data.`;
-
-    await sendMessage(from, message);
+_Note: You can only log after ${user.eveningReminderTime}_`);
 }
 
-/**
- * Handle help command
- */
-async function handleHelp(from) {
-    const message = `📚 *Commands*
-
-*Daily Check-in:*
-• *yes* - Log that you coded
-• *no* - Log that you didn't
-
-*Stats:*
-• *status* - Your current streak
-• *summary* - Last 7 days report
-
-*Other:*
-• *start* - Welcome message
-• *settings* - View/change settings
-• *reset* - Clear all data
-• *help* - This message
-
-💡 You'll get daily reminders at your chosen times!`;
-
-    await sendMessage(from, message);
-}
-
-/**
- * Handle reset command
- */
 async function handleReset(from, user) {
-    if (user.currentStreak === 0 && user.longestStreak === 0) {
-        await sendMessage(from, "🔄 Nothing to reset - you're starting fresh!");
+    if (!user.currentStreak && !user.longestStreak) {
+        await sendMessage(from, `Nothing to reset! Fresh slate ready.`);
         return;
     }
 
-    const message = `⚠️ *Reset Confirmation*
+    await sendMessage(from, `⚠️ This deletes everything:
+• ${user.currentStreak} day streak
+• ${user.longestStreak} day record
+• All history
 
-This will delete:
-• Current streak: ${user.currentStreak} days
-• Longest streak: ${user.longestStreak} days
-• All daily logs
-
-Type *confirm reset* to proceed.
-Any other message to cancel.`;
-
-    await sendMessage(from, message);
+Type *confirm reset* to proceed.`);
 }
 
-/**
- * Handle reset confirmation
- */
-async function handleConfirmReset(from) {
-    await resetUserData(from);
-    await sendMessage(from, "🔄 All data reset. Starting fresh!\n\nType *start* to begin.");
+async function handleUnknown(from, user) {
+    await sendMessage(from, `Not sure what you mean, ${user.name}.
+
+Try: *yes*, *no*, *status*, or *help*`);
 }
 
-/**
- * Handle unknown commands
- */
-async function handleFallback(from) {
-    const message = `🤔 I didn't understand that.
+// ========== HELPERS ==========
 
-Quick commands:
-• *yes* / *no* - Daily check-in
-• *status* - Your streak
-• *help* - All commands`;
+function getMoodResponse(mood, name, timeOfDay) {
+    const moodLower = mood.toLowerCase();
 
-    await sendMessage(from, message);
+    if (timeOfDay === 'morning') {
+        if (moodLower.includes('tired') || moodLower.includes('exhausted') || moodLower.includes('sleepy')) {
+            return `Tired but here - that's what matters, ${name}! ☕ Let's make it count anyway.`;
+        }
+        if (moodLower.includes('energized') || moodLower.includes('great') || moodLower.includes('motivated') || moodLower.includes('good')) {
+            return `Love that energy, ${name}! 🔥 Let's channel it.`;
+        }
+        if (moodLower.includes('stressed') || moodLower.includes('anxious') || moodLower.includes('overwhelmed')) {
+            return `I feel you, ${name}. Let's focus on just ONE thing today. Small wins.`;
+        }
+        return `Got it, ${name}. Whatever you're feeling, let's make progress.`;
+    } else {
+        if (moodLower.includes('tired') || moodLower.includes('exhausted')) {
+            return `Long day, ${name}? Let's wrap this up quick then.`;
+        }
+        if (moodLower.includes('accomplished') || moodLower.includes('great') || moodLower.includes('good') || moodLower.includes('productive')) {
+            return `That's what I like to hear! 🙌`;
+        }
+        if (moodLower.includes('frustrated') || moodLower.includes('stuck') || moodLower.includes('struggling')) {
+            return `Tough day? That's okay. Progress isn't always linear.`;
+        }
+        return `Thanks for checking in, ${name}.`;
+    }
 }

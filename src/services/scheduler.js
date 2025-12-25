@@ -1,6 +1,5 @@
 /**
- * Scheduler Service - Multi-user reminders using node-cron
- * Sends personalized morning motivation and evening check-ins
+ * Scheduler - Morning motivation & Evening accountability
  */
 
 import cron from 'node-cron';
@@ -9,137 +8,113 @@ import {
     getUsersForMorningReminder,
     getUsersForEveningReminder,
     markMorningReminderSent,
-    markEveningReminderSent
+    markEveningReminderSent,
+    setConversationState,
+    createTodaysLog
 } from './storage.js';
-import { formatStreakEmoji, getTodayDate } from '../utils/helpers.js';
+import { getTodayDate } from '../utils/helpers.js';
 import { getQuoteOfTheDay } from '../utils/quotes.js';
 
 /**
- * Send morning motivational message to a user
- * @param {Object} user - User document
+ * Morning reminder - Start with quote, ask how they're feeling
  */
 async function sendMorningReminder(user) {
     const quote = getQuoteOfTheDay();
-    const name = user.name || 'Coder';
-    const emoji = formatStreakEmoji(user.currentStreak);
+    const name = user.name || 'friend';
 
-    let streakMessage = '';
-    if (user.currentStreak > 0) {
-        streakMessage = `\n${emoji} You're on a *${user.currentStreak}-day streak*! Don't break the chain!`;
+    await createTodaysLog(user.phone);
+
+    // Personalized greeting based on streak
+    let greeting;
+    if (user.currentStreak >= 14) {
+        greeting = `Good morning, ${name}! 🌅\n\n🔥 ${user.currentStreak} days strong! You're unstoppable.`;
+    } else if (user.currentStreak >= 7) {
+        greeting = `Good morning, ${name}! 🌅\n\n⚡ Week ${Math.floor(user.currentStreak / 7)} of your streak! Crushing it.`;
+    } else if (user.currentStreak > 0) {
+        greeting = `Good morning, ${name}! 🌅\n\nDay ${user.currentStreak + 1} of your journey. Let's go!`;
+    } else {
+        greeting = `Good morning, ${name}! 🌅\n\nNew day, new opportunity.`;
     }
 
-    const message = `🌅 *Good Morning, ${name}!*
-${streakMessage}
+    const message = `${greeting}
 
-💡 *Quote of the Day:*
-_"${quote}"_
+💡 _"${quote}"_
 
-🚀 Make today count! Even 15 minutes of coding adds up.
-
-Have a productive day! 💪`;
+*How are you feeling today?*
+(Just a word or two - energized, tired, motivated, stressed, etc.)`;
 
     try {
         await sendMessage(user.phone, message);
         await markMorningReminderSent(user.phone, getTodayDate());
-        console.log(`[Scheduler] Morning reminder sent to ${user.phone}`);
+        await setConversationState(user.phone, 'morning_mood');
+        console.log(`[Morning] Sent to ${name}`);
     } catch (error) {
-        console.error(`[Scheduler] Failed to send morning reminder to ${user.phone}:`, error.message);
+        console.error(`[Morning] Failed for ${user.phone}:`, error.message);
     }
 }
 
 /**
- * Send evening check-in message to a user
- * @param {Object} user - User document
+ * Evening reminder - Check in, ask how they're feeling first
  */
 async function sendEveningReminder(user) {
-    const name = user.name || 'there';
-    const emoji = formatStreakEmoji(user.currentStreak);
+    const name = user.name || 'friend';
+    const today = getTodayDate();
+    const todaysLog = user.dailyLog.find(log => log.date === today);
 
-    let streakWarning = '';
-    if (user.currentStreak > 0) {
-        streakWarning = `\n${emoji} Your *${user.currentStreak}-day streak* is waiting!\n`;
+    // If they already completed today, skip
+    if (todaysLog?.coded !== null && todaysLog?.coded !== undefined) {
+        console.log(`[Evening] ${name} already logged today, skipping`);
+        return;
     }
 
-    const message = `🌙 *Evening Check-in, ${name}!*
-${streakWarning}
-Did you code or learn something new today?
+    let greeting;
+    if (user.currentStreak >= 7) {
+        greeting = `Hey ${name}! 🌙\n\nYour ${user.currentStreak}-day streak is waiting to grow!`;
+    } else if (user.currentStreak > 0) {
+        greeting = `Hey ${name}! 🌙\n\nEnd of day check-in time.`;
+    } else {
+        greeting = `Hey ${name}! 🌙\n\nHow was your day?`;
+    }
 
-Reply:
-• *yes* - I coded today ✅
-• *no* - I didn't code today ❌
+    const message = `${greeting}
 
-Every day counts! 📈`;
+*How are you feeling right now?*
+(Tired, accomplished, frustrated, happy, etc.)`;
 
     try {
         await sendMessage(user.phone, message);
         await markEveningReminderSent(user.phone, getTodayDate());
-        console.log(`[Scheduler] Evening reminder sent to ${user.phone}`);
+        await setConversationState(user.phone, 'evening_mood');
+        console.log(`[Evening] Sent to ${name}`);
     } catch (error) {
-        console.error(`[Scheduler] Failed to send evening reminder to ${user.phone}:`, error.message);
+        console.error(`[Evening] Failed for ${user.phone}:`, error.message);
     }
 }
 
 /**
- * Check and send reminders for all users
- * Runs every minute to check who needs reminders
+ * Check and send reminders every minute
  */
 async function checkAndSendReminders() {
     const now = new Date();
     const currentTime = `${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}`;
     const today = getTodayDate();
 
-    // Get users needing morning reminder
-    const morningUsers = await getUsersForMorningReminder(currentTime, today);
-    for (const user of morningUsers) {
-        await sendMorningReminder(user);
-    }
-
-    // Get users needing evening reminder
-    const eveningUsers = await getUsersForEveningReminder(currentTime, today);
-    for (const user of eveningUsers) {
-        await sendEveningReminder(user);
-    }
-
-    if (morningUsers.length > 0 || eveningUsers.length > 0) {
-        console.log(`[Scheduler] Sent ${morningUsers.length} morning, ${eveningUsers.length} evening reminders at ${currentTime}`);
-    }
-}
-
-/**
- * Initialize the scheduler
- * Runs every minute to check for users needing reminders
- */
-export function initScheduler() {
-    // Run every minute to check for reminders
-    cron.schedule('* * * * *', async () => {
-        try {
-            await checkAndSendReminders();
-        } catch (error) {
-            console.error('[Scheduler] Error checking reminders:', error.message);
+    try {
+        const morningUsers = await getUsersForMorningReminder(currentTime, today);
+        for (const user of morningUsers) {
+            await sendMorningReminder(user);
         }
-    });
 
-    console.log('[Scheduler] Multi-user reminder scheduler initialized');
-    console.log('[Scheduler] Checking for reminders every minute');
+        const eveningUsers = await getUsersForEveningReminder(currentTime, today);
+        for (const user of eveningUsers) {
+            await sendEveningReminder(user);
+        }
+    } catch (error) {
+        console.error('[Scheduler]', error.message);
+    }
 }
 
-/**
- * Send a test reminder (for debugging)
- * @param {string} phone - Phone number to test
- * @param {string} type - 'morning' or 'evening'
- */
-export async function sendTestReminder(phone, type = 'morning') {
-    const User = (await import('../models/User.js')).default;
-    const user = await User.findOne({ phone });
-
-    if (!user) {
-        console.log('[Scheduler] User not found for test reminder');
-        return;
-    }
-
-    if (type === 'morning') {
-        await sendMorningReminder(user);
-    } else {
-        await sendEveningReminder(user);
-    }
+export function initScheduler() {
+    cron.schedule('* * * * *', checkAndSendReminders);
+    console.log('[Scheduler] Ready - checking every minute');
 }
