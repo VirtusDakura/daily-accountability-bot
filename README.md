@@ -1,122 +1,207 @@
-# Daily Accountability Bot 🤖
+# 🤖 Daily Accountability Bot
 
-A WhatsApp-based accountability bot that helps track daily programming consistency, maintain streaks, and capture learning reflections.
+A WhatsApp-based accountability partner that helps you build a consistent coding habit through daily check-ins, streak tracking, and AI-powered coaching.
 
-## Features
+![License](https://img.shields.io/badge/license-MIT-blue.svg)
+![Node](https://img.shields.io/badge/node-%3E%3D18.0.0-green.svg)
+![WhatsApp](https://img.shields.io/badge/WhatsApp-Cloud%20API-25D366.svg)
 
-- ✅ **Daily Check-in** - Log whether you coded today (yes/no)
-- 🔥 **Streak Tracking** - Track your current and longest coding streaks
-- 📝 **Learning Reflections** - Record what you learned each day
-- ⏰ **Daily Reminders** - Automated 8 PM reminder (configurable)
-- 📊 **Stats & Summary** - View your consistency and weekly reports
-- 🔒 **Single User** - Private bot for one user only
+## ✨ Features
 
-## Commands
+### 📅 Daily Flow
+- **🌅 Morning Check-in**: Motivational quote + asks how you're feeling + ONE goal for the day
+- **🌙 Evening Check-in**: Asks how your day went + did you accomplish your goal + what you learned
+- **⏰ Time-Lock**: Can only log completion after your chosen evening time (no shortcuts!)
+
+### 🔥 Streak Tracking
+- Current streak counter
+- Longest streak record
+- 7-day consistency stats
+- Total days coded
+
+### 🤖 AI Coaching (Optional)
+- **Reflection Feedback**: AI responds to your learnings with encouragement
+- **Why-Not Support**: Non-judgmental acknowledgment when you miss a day
+- **Weekly Summary**: AI-powered reflection every Sunday (opt-in)
+
+### 💬 Conversational
+- Asks how you're feeling (mood-aware responses)
+- Personal, friendly tone
+- Uses your name throughout
+- Encouraging but firm - no room for excuses
+
+## 🛠️ Tech Stack
+
+- **Runtime**: Node.js 18+
+- **Framework**: Express.js
+- **Database**: MongoDB (Mongoose)
+- **Messaging**: WhatsApp Cloud API
+- **AI**: Groq (LLaMA 3.3 70B)
+- **Scheduler**: node-cron
+- **Deployment**: Render
+
+## 📋 Commands
 
 | Command | Description |
 |---------|-------------|
-| `hi` / `start` | Welcome message |
+| `hi` / `hello` | Greeting & status |
 | `yes` | Log that you coded today |
-| `no` | Log that you didn't code today |
-| `status` | View current streak & stats |
+| `no` | Log that you didn't code |
+| `status` | View your streak stats |
 | `summary` | Last 7 days report |
-| `help` | List all commands |
-| `reset` | Reset all data (with confirmation) |
+| `help` | Show all commands |
+| `reset` | Clear all data |
 
-## Project Structure
+## 🚀 Getting Started
+
+### Prerequisites
+- Node.js 18+
+- MongoDB Atlas account
+- Meta Developer account with WhatsApp Business API
+- Groq API key (free at console.groq.com) - optional
+
+### Installation
+
+```bash
+# Clone the repository
+git clone https://github.com/VirtusDakura/daily-accountability-bot.git
+cd daily-accountability-bot
+
+# Install dependencies
+npm install
+
+# Create .env file
+cp .env.example .env
+```
+
+### Environment Variables
+
+```env
+# Required
+WHATSAPP_TOKEN=your_whatsapp_access_token
+PHONE_NUMBER_ID=your_phone_number_id
+MONGODB_URI=mongodb+srv://...
+VERIFY_TOKEN=WHATSAPP_TOKEN
+
+# Optional - AI Features
+GROQ_API_KEY=gsk_your_key_here
+AI_ENABLED=true
+AI_WEEKLY_SUMMARY=true
+
+# Optional - Defaults
+PORT=3000
+```
+
+### Running Locally
+
+```bash
+# Development with auto-reload
+npm run dev
+
+# Production
+npm start
+```
+
+### Webhook Setup
+
+1. Use ngrok for local testing: `ngrok http 3000`
+2. Configure webhook URL in Meta Developer Dashboard:
+   - Callback URL: `https://your-url.ngrok.io/webhook`
+   - Verify Token: Your `VERIFY_TOKEN` value
+
+## 📁 Project Structure
 
 ```
 src/
-├── index.js                 # Main Express server & webhook
-├── data/
-│   └── user.json           # Persistent storage (JSON)
+├── index.js              # Express server & webhook routes
+├── ai/
+│   └── coach.js          # AI coaching module (Groq)
+├── config/
+│   └── db.js             # MongoDB connection
+├── models/
+│   └── User.js           # User schema
 ├── services/
-│   ├── whatsapp.js         # WhatsApp API integration
-│   ├── messageHandler.js   # Command routing & responses
-│   ├── storage.js          # JSON file read/write
-│   └── scheduler.js        # Daily cron reminders
+│   ├── messageHandler.js # Bot logic & conversation flows
+│   ├── scheduler.js      # Cron jobs (morning/evening/weekly)
+│   ├── storage.js        # Database operations
+│   └── whatsapp.js       # WhatsApp API client
 └── utils/
-    └── helpers.js          # Date & formatting utilities
+    ├── helpers.js        # Date & formatting utilities
+    └── quotes.js         # 31 programming quotes
 ```
 
-## Environment Variables
+## 🔧 Configuration
 
-Create a `.env` file in the project root:
+### Reminder Times
+Users set their own morning and evening times during onboarding:
+- Morning: When to receive motivational message + goal prompt
+- Evening: When to check if goal was accomplished
 
-```env
-# WhatsApp Cloud API
-WHATSAPP_TOKEN=your_whatsapp_access_token
-PHONE_NUMBER_ID=your_phone_number_id
+### AI Features
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `AI_ENABLED` | `false` | Enable AI reflection feedback |
+| `AI_WEEKLY_SUMMARY` | `false` | Enable Sunday AI summaries |
+| `GROQ_API_KEY` | - | Required if AI enabled |
 
-# Webhook verification
-VERIFY_TOKEN=your_verify_token
+If AI is disabled, the bot uses static fallback messages.
 
-# Bot configuration
-ALLOWED_PHONE=your_whatsapp_number  # e.g., 1234567890
-PORT=3000
+## 🌐 Deployment (Render)
 
-# Daily reminder time (cron format: minute hour * * *)
-REMINDER_TIME=0 20 * * *   # 8:00 PM daily
+1. Push to GitHub
+2. Create new Web Service on Render
+3. Connect your repository
+4. Set environment variables
+5. Deploy!
+
+**Important**: Add `0.0.0.0/0` to MongoDB Atlas IP whitelist.
+
+## 📱 User Flow
+
+```
+New User → Onboarding
+           ├── What's your name?
+           ├── Morning reminder time?
+           └── Evening reminder time?
+           
+Morning Reminder (at chosen time)
+├── Quote of the day
+├── How are you feeling?
+└── What's your ONE goal today?
+
+Evening Reminder (at chosen time)  
+├── How are you feeling?
+├── Did you accomplish your goal?
+│   ├── YES → What did you do? → What did you learn? → AI feedback
+│   └── NO  → What happened? → AI acknowledgment
+└── Streak updated
 ```
 
-### Reminder Time Examples
+## 🤝 Contributing
 
-| Time | Cron Expression |
-|------|-----------------|
-| 8:00 PM | `0 20 * * *` |
-| 9:30 PM | `30 21 * * *` |
-| 7:00 AM | `0 7 * * *` |
+1. Fork the repository
+2. Create your feature branch (`git checkout -b feature/amazing-feature`)
+3. Commit your changes (`git commit -m 'Add amazing feature'`)
+4. Push to the branch (`git push origin feature/amazing-feature`)
+5. Open a Pull Request
 
-## Running Locally
+## 📄 License
 
-### 1. Install dependencies
-```bash
-npm install
-```
+This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
 
-### 2. Start development server
-```bash
-npm run dev
-```
+## 👤 Author
 
-### 3. Expose with ngrok
-```bash
-ngrok http 3000
-```
+**VirtusDakura**
 
-### 4. Configure Meta Webhook
-- Go to Meta Developers Dashboard
-- Set Callback URL: `https://your-ngrok-url/webhook`
-- Set Verify Token: (must match `VERIFY_TOKEN` in .env)
+- GitHub: [@VirtusDakura](https://github.com/VirtusDakura)
 
-## How It Works
+## 🙏 Acknowledgments
 
-### Daily Flow
-1. User receives reminder at 8 PM
-2. User replies `yes` or `no`
-3. If `yes`, bot asks for learning reflection
-4. User types what they learned
-5. Bot saves and confirms
+- WhatsApp Cloud API for messaging platform
+- Groq for fast, free AI inference
+- MongoDB Atlas for database hosting
+- Render for deployment
 
-### Streak Logic
-- **Streak increases**: If user logs `yes` on consecutive days
-- **Streak resets to 0**: If user logs `no`
-- **Streak resets to 1**: If user logs `yes` after missing a day
+---
 
-### Guardrails
-- Only the allowed phone number can interact
-- Can only log once per day
-- Double-logging prevented with friendly message
-
-## Tech Stack
-
-- **Runtime**: Node.js
-- **Server**: Express
-- **API**: WhatsApp Cloud API (Meta)
-- **Scheduler**: node-cron
-- **HTTP Client**: axios
-- **Environment**: dotenv
-
-## License
-
-ISC
+*Built with ❤️ to help developers stay consistent*
