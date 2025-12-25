@@ -2,11 +2,11 @@
  * Daily Accountability Bot - Main Entry Point
  * 
  * A WhatsApp-based bot that helps track daily programming consistency.
- * Built with Express, WhatsApp Cloud API, and node-cron.
+ * Built with Express, WhatsApp Cloud API, MongoDB, and node-cron.
  * 
  * Features:
  * - Daily check-in (yes/no)
- * - Streak tracking
+ * - Streak tracking (persistent with MongoDB)
  * - Learning reflections
  * - Daily reminders
  */
@@ -15,6 +15,7 @@ import dotenv from "dotenv";
 dotenv.config();
 
 import express from "express";
+import { connectDB } from "./config/db.js";
 import { handleMessage } from "./services/messageHandler.js";
 import { initScheduler } from "./services/scheduler.js";
 
@@ -96,16 +97,32 @@ app.post("/webhook", async (req, res) => {
 
 // ==================== START SERVER ====================
 
-app.listen(PORT, () => {
-    console.log(`
+async function startServer() {
+    try {
+        // Connect to MongoDB first
+        await connectDB();
+
+        // Start Express server
+        app.listen(PORT, () => {
+            console.log(`
 ╔══════════════════════════════════════════╗
 ║   🤖 Daily Accountability Bot Started    ║
 ╠══════════════════════════════════════════╣
 ║   Port: ${PORT}                              ║
 ║   Webhook: /webhook                      ║
+║   Database: MongoDB Connected            ║
 ╚══════════════════════════════════════════╝
-    `);
+            `);
 
-    // Initialize the daily reminder scheduler
-    initScheduler();
-});
+            // Initialize the daily reminder scheduler
+            initScheduler();
+        });
+
+    } catch (error) {
+        console.error("[Server] Failed to start:", error);
+        process.exit(1);
+    }
+}
+
+// Start the server
+startServer();

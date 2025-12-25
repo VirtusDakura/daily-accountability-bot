@@ -1,106 +1,98 @@
 /**
- * Storage Service - JSON file persistence for user data
- * Handles reading/writing to data/user.json
+ * Storage Service - MongoDB persistence for user data
+ * Handles all database operations for user data, streaks, and daily logs
  */
 
-import fs from 'fs';
-import path from 'path';
-import { fileURLToPath } from 'url';
-
-// ES Module way to get __dirname
-const __filename = fileURLToPath(import.meta.url);
-const __dirname = path.dirname(__filename);
-
-// Path to user data file
-const DATA_FILE = path.join(__dirname, '../data/user.json');
+import User from '../models/User.js';
 
 /**
- * Default user data structure
- */
-const DEFAULT_DATA = {
-    allowedPhone: "",
-    lastResponseDate: null,
-    currentStreak: 0,
-    longestStreak: 0,
-    dailyLog: [],
-    awaitingLearning: false
-};
-
-/**
- * Read user data from JSON file
+ * Get or create user data from database
+ * @param {string} phone - User's phone number
  * @returns {Object} User data object
  */
-export function getUserData() {
+export async function getUserData(phone) {
     try {
-        if (!fs.existsSync(DATA_FILE)) {
-            // Create file with defaults if it doesn't exist
-            saveUserData(DEFAULT_DATA);
-            return { ...DEFAULT_DATA };
+        let user = await User.findOne({ phone });
+
+        if (!user) {
+            // Create new user if doesn't exist
+            user = new User({
+                phone,
+                lastResponseDate: null,
+                currentStreak: 0,
+                longestStreak: 0,
+                dailyLog: [],
+                awaitingLearning: false
+            });
+            await user.save();
         }
-        const data = fs.readFileSync(DATA_FILE, 'utf-8');
-        return JSON.parse(data);
+
+        return user;
     } catch (error) {
-        console.error('Error reading user data:', error);
-        return { ...DEFAULT_DATA };
+        console.error('[Storage] Error getting user data:', error);
+        throw error;
     }
 }
 
 /**
- * Save user data to JSON file
- * @param {Object} data - User data to save
+ * Save user data to database
+ * @param {Object} userData - User document to save
  */
-export function saveUserData(data) {
+export async function saveUserData(userData) {
     try {
-        fs.writeFileSync(DATA_FILE, JSON.stringify(data, null, 2), 'utf-8');
+        await userData.save();
     } catch (error) {
-        console.error('Error saving user data:', error);
+        console.error('[Storage] Error saving user data:', error);
+        throw error;
     }
 }
 
 /**
  * Add a daily log entry
+ * @param {string} phone - User's phone number
  * @param {string} date - Date in YYYY-MM-DD format
  * @param {boolean} coded - Whether user coded that day
  * @param {string|null} learning - Optional learning note
  */
-export function addDailyLog(date, coded, learning = null) {
-    const data = getUserData();
+export async function addDailyLog(phone, date, coded, learning = null) {
+    const user = await getUserData(phone);
 
     // Check if entry already exists for this date
-    const existingIndex = data.dailyLog.findIndex(log => log.date === date);
+    const existingIndex = user.dailyLog.findIndex(log => log.date === date);
 
     const logEntry = {
         date,
         coded,
         learning,
-        timestamp: new Date().toISOString()
+        timestamp: new Date()
     };
 
     if (existingIndex >= 0) {
         // Update existing entry
-        data.dailyLog[existingIndex] = logEntry;
+        user.dailyLog[existingIndex] = logEntry;
     } else {
         // Add new entry
-        data.dailyLog.push(logEntry);
+        user.dailyLog.push(logEntry);
     }
 
     // Keep only last 90 days of logs
-    if (data.dailyLog.length > 90) {
-        data.dailyLog = data.dailyLog.slice(-90);
+    if (user.dailyLog.length > 90) {
+        user.dailyLog = user.dailyLog.slice(-90);
     }
 
-    saveUserData(data);
+    await user.save();
     return logEntry;
 }
 
 /**
  * Update streak based on today's response
+ * @param {string} phone - User's phone number
  * @param {boolean} coded - Whether user coded today
  * @param {string} lastDate - Last response date
  * @returns {Object} Updated streak info
  */
-export function updateStreak(coded, lastDate) {
-    const data = getUserData();
+export async function updateStreak(phone, coded, lastDate) {
+    const user = await getUserData(phone);
     const today = new Date();
     const todayStr = today.toISOString().split('T')[0];
 
@@ -112,89 +104,108 @@ export function updateStreak(coded, lastDate) {
 
             if (diffDays === 1) {
                 // Consecutive day - increment streak
-                data.currentStreak += 1;
+                user.currentStreak += 1;
             } else if (diffDays > 1) {
                 // Streak broken - reset to 1
-                data.currentStreak = 1;
+                user.currentStreak = 1;
             }
-            // If diffDays === 0, they already logged today (shouldn't happen with guards)
+            // If diffDays === 0, they already logged today
         } else {
             // First ever log
-            data.currentStreak = 1;
+            user.currentStreak = 1;
         }
 
         // Update longest streak if current beats it
-        if (data.currentStreak > data.longestStreak) {
-            data.longestStreak = data.currentStreak;
+        if (user.currentStreak > user.longestStreak) {
+            user.longestStreak = user.currentStreak;
         }
     } else {
         // User didn't code - reset streak
-        data.currentStreak = 0;
+        user.currentStreak = 0;
     }
 
-    data.lastResponseDate = todayStr;
-    saveUserData(data);
+    user.lastResponseDate = todayStr;
+    await user.save();
 
     return {
-        currentStreak: data.currentStreak,
-        longestStreak: data.longestStreak
+        currentStreak: user.currentStreak,
+        longestStreak: user.longestStreak
     };
 }
 
 /**
  * Check if user has already responded today
+ * @param {string} phone - User's phone number
  * @returns {boolean}
  */
-export function hasRespondedToday() {
-    const data = getUserData();
-    if (!data.lastResponseDate) return false;
+export async function hasRespondedToday(phone) {
+    const user = await getUserData(phone);
+    if (!user.lastResponseDate) return false;
 
     const today = new Date().toISOString().split('T')[0];
-    return data.lastResponseDate === today;
+    return user.lastResponseDate === today;
 }
 
 /**
  * Set awaiting learning state
+ * @param {string} phone - User's phone number
  * @param {boolean} awaiting
  */
-export function setAwaitingLearning(awaiting) {
-    const data = getUserData();
-    data.awaitingLearning = awaiting;
-    saveUserData(data);
+export async function setAwaitingLearning(phone, awaiting) {
+    const user = await getUserData(phone);
+    user.awaitingLearning = awaiting;
+    await user.save();
 }
 
 /**
  * Check if bot is awaiting learning input
+ * @param {string} phone - User's phone number
  * @returns {boolean}
  */
-export function isAwaitingLearning() {
-    const data = getUserData();
-    return data.awaitingLearning === true;
+export async function isAwaitingLearning(phone) {
+    const user = await getUserData(phone);
+    return user.awaitingLearning === true;
 }
 
 /**
  * Save learning note to today's log
+ * @param {string} phone - User's phone number
  * @param {string} learning - Learning note text
  */
-export function saveLearningNote(learning) {
-    const data = getUserData();
+export async function saveLearningNote(phone, learning) {
+    const user = await getUserData(phone);
     const today = new Date().toISOString().split('T')[0];
 
-    const todayLog = data.dailyLog.find(log => log.date === today);
+    const todayLog = user.dailyLog.find(log => log.date === today);
     if (todayLog) {
         todayLog.learning = learning;
     }
 
-    data.awaitingLearning = false;
-    saveUserData(data);
+    user.awaitingLearning = false;
+    await user.save();
 }
 
 /**
  * Get last N days of logs
+ * @param {string} phone - User's phone number
  * @param {number} days - Number of days to retrieve  
  * @returns {Array} Array of log entries
  */
-export function getRecentLogs(days = 7) {
-    const data = getUserData();
-    return data.dailyLog.slice(-days);
+export async function getRecentLogs(phone, days = 7) {
+    const user = await getUserData(phone);
+    return user.dailyLog.slice(-days);
+}
+
+/**
+ * Reset all user data
+ * @param {string} phone - User's phone number
+ */
+export async function resetUserData(phone) {
+    const user = await getUserData(phone);
+    user.currentStreak = 0;
+    user.longestStreak = 0;
+    user.dailyLog = [];
+    user.lastResponseDate = null;
+    user.awaitingLearning = false;
+    await user.save();
 }

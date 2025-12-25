@@ -13,13 +13,7 @@ import { formatStreakEmoji } from '../utils/helpers.js';
  * @returns {string|null}
  */
 function getReminderPhone() {
-    // Get from env variable
-    if (process.env.ALLOWED_PHONE) {
-        return process.env.ALLOWED_PHONE;
-    }
-    // Fallback to data file
-    const data = getUserData();
-    return data.allowedPhone || null;
+    return process.env.ALLOWED_PHONE || null;
 }
 
 /**
@@ -34,13 +28,13 @@ async function sendDailyReminder() {
     }
 
     // Don't send reminder if already responded today
-    if (hasRespondedToday()) {
+    if (await hasRespondedToday(phone)) {
         console.log('[Scheduler] User already responded today, skipping reminder');
         return;
     }
 
-    const data = getUserData();
-    const streak = data.currentStreak;
+    const user = await getUserData(phone);
+    const streak = user.currentStreak;
     const emoji = formatStreakEmoji(streak);
 
     let message;

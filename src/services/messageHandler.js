@@ -6,29 +6,23 @@
 import { sendMessage } from './whatsapp.js';
 import {
     getUserData,
-    saveUserData,
     addDailyLog,
     updateStreak,
     hasRespondedToday,
     setAwaitingLearning,
     isAwaitingLearning,
     saveLearningNote,
-    getRecentLogs
+    getRecentLogs,
+    resetUserData
 } from './storage.js';
 import { getTodayDate, formatStreakEmoji } from '../utils/helpers.js';
 
 /**
- * Get the allowed phone number from env or data file
+ * Get the allowed phone number from env
  * @returns {string} Allowed phone number
  */
 function getAllowedPhone() {
-    // First check env variable
-    if (process.env.ALLOWED_PHONE) {
-        return process.env.ALLOWED_PHONE;
-    }
-    // Fallback to data file
-    const data = getUserData();
-    return data.allowedPhone || "";
+    return process.env.ALLOWED_PHONE || "";
 }
 
 /**
@@ -59,7 +53,7 @@ export async function handleMessage(from, text) {
     }
 
     // Check if we're awaiting a learning response
-    if (isAwaitingLearning()) {
+    if (await isAwaitingLearning(from)) {
         await handleLearningInput(from, text.trim());
         return;
     }
@@ -121,8 +115,8 @@ export async function handleMessage(from, text) {
  * Handle start/greeting command
  */
 async function handleStart(from) {
-    const data = getUserData();
-    const streak = data.currentStreak;
+    const user = await getUserData(from);
+    const streak = user.currentStreak;
     const emoji = formatStreakEmoji(streak);
 
     const message = `👋 Hey Virtus! Welcome back.
@@ -145,20 +139,20 @@ Reply:
  */
 async function handleYes(from) {
     // Check if already logged today
-    if (hasRespondedToday()) {
+    if (await hasRespondedToday(from)) {
         await sendMessage(from, "✅ You've already logged today. See you tomorrow! 👋\n\nType *status* to see your streak.");
         return;
     }
 
-    const data = getUserData();
-    const lastDate = data.lastResponseDate;
+    const user = await getUserData(from);
+    const lastDate = user.lastResponseDate;
 
     // Log the day and update streak
-    addDailyLog(getTodayDate(), true);
-    const streakInfo = updateStreak(true, lastDate);
+    await addDailyLog(from, getTodayDate(), true);
+    const streakInfo = await updateStreak(from, true, lastDate);
 
     // Set flag to await learning input
-    setAwaitingLearning(true);
+    await setAwaitingLearning(from, true);
 
     const emoji = formatStreakEmoji(streakInfo.currentStreak);
 
@@ -178,17 +172,17 @@ ${emoji} Streak: ${streakInfo.currentStreak} day${streakInfo.currentStreak !== 1
  */
 async function handleNo(from) {
     // Check if already logged today
-    if (hasRespondedToday()) {
+    if (await hasRespondedToday(from)) {
         await sendMessage(from, "✅ You've already logged today. See you tomorrow! 👋\n\nType *status* to see your streak.");
         return;
     }
 
-    const data = getUserData();
-    const previousStreak = data.currentStreak;
+    const user = await getUserData(from);
+    const previousStreak = user.currentStreak;
 
     // Log the day and reset streak
-    addDailyLog(getTodayDate(), false);
-    updateStreak(false, data.lastResponseDate);
+    await addDailyLog(from, getTodayDate(), false);
+    await updateStreak(from, false, user.lastResponseDate);
 
     let message;
     if (previousStreak > 0) {
@@ -216,11 +210,11 @@ Type *status* anytime to check your stats.`;
  * Handle status command - show current stats
  */
 async function handleStatus(from) {
-    const data = getUserData();
-    const emoji = formatStreakEmoji(data.currentStreak);
+    const user = await getUserData(from);
+    const emoji = formatStreakEmoji(user.currentStreak);
 
     // Calculate consistency (last 7 days)
-    const recentLogs = getRecentLogs(7);
+    const recentLogs = await getRecentLogs(from, 7);
     const codedDays = recentLogs.filter(log => log.coded).length;
     const consistency = recentLogs.length > 0
         ? Math.round((codedDays / recentLogs.length) * 100)
@@ -228,13 +222,13 @@ async function handleStatus(from) {
 
     const message = `📊 *Your Stats*
 
-${emoji} Current Streak: *${data.currentStreak}* day${data.currentStreak !== 1 ? 's' : ''}
-🏆 Longest Streak: *${data.longestStreak}* days
-📅 Last Check-in: ${data.lastResponseDate || 'Never'}
+${emoji} Current Streak: *${user.currentStreak}* day${user.currentStreak !== 1 ? 's' : ''}
+🏆 Longest Streak: *${user.longestStreak}* days
+📅 Last Check-in: ${user.lastResponseDate || 'Never'}
 📈 7-Day Consistency: ${consistency}%
 
-${data.currentStreak >= 7 ? "🔥 You're on fire! Keep it up!" :
-            data.currentStreak > 0 ? "💪 Good progress! Stay consistent!" :
+${user.currentStreak >= 7 ? "🔥 You're on fire! Keep it up!" :
+            user.currentStreak > 0 ? "💪 Good progress! Stay consistent!" :
                 "🚀 Start a new streak today!"}`;
 
     await sendMessage(from, message);
@@ -244,7 +238,7 @@ ${data.currentStreak >= 7 ? "🔥 You're on fire! Keep it up!" :
  * Handle summary command - last 7 days report
  */
 async function handleSummary(from) {
-    const logs = getRecentLogs(7);
+    const logs = await getRecentLogs(from, 7);
 
     if (logs.length === 0) {
         await sendMessage(from, "📋 No logs yet. Start by replying *yes* or *no* to today's check-in!");
@@ -272,7 +266,7 @@ async function handleSummary(from) {
  * Handle learning input after YES response
  */
 async function handleLearningInput(from, text) {
-    saveLearningNote(text);
+    await saveLearningNote(from, text);
 
     const message = `📝 Noted! Great learning today.
 
@@ -311,9 +305,9 @@ async function handleHelp(from) {
  * Handle reset command - asks for confirmation
  */
 async function handleReset(from) {
-    const data = getUserData();
+    const user = await getUserData(from);
 
-    if (data.currentStreak === 0 && data.longestStreak === 0) {
+    if (user.currentStreak === 0 && user.longestStreak === 0) {
         await sendMessage(from, "🔄 Nothing to reset - you're starting fresh already!");
         return;
     }
@@ -321,8 +315,8 @@ async function handleReset(from) {
     const message = `⚠️ *Reset Confirmation*
 
 This will reset:
-• Current streak: ${data.currentStreak} days
-• Longest streak: ${data.longestStreak} days
+• Current streak: ${user.currentStreak} days
+• Longest streak: ${user.longestStreak} days
 • All daily logs
 
 Type *confirm reset* to proceed.
@@ -335,13 +329,7 @@ Any other message to cancel.`;
  * Handle reset confirmation
  */
 async function handleConfirmReset(from) {
-    const data = getUserData();
-    data.currentStreak = 0;
-    data.longestStreak = 0;
-    data.dailyLog = [];
-    data.lastResponseDate = null;
-    data.awaitingLearning = false;
-    saveUserData(data);
+    await resetUserData(from);
 
     await sendMessage(from, "🔄 All data has been reset. Starting fresh!\n\nType *start* to begin.");
 }
