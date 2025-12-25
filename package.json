@@ -4,6 +4,8 @@
   "description": "A WhatsApp-based accountability bot that forces daily programming check-ins, tracks consistency, and captures daily learning reflections.",
   "main": "index.js",
   "scripts": {
+    "start": "node src/index.js",
+    "dev": "nodemon src/index.js",
     "test": "echo \"Error: no test specified\" && exit 1"
   },
   "repository": {
@@ -13,7 +15,7 @@
   "keywords": [],
   "author": "",
   "license": "ISC",
-  "type": "commonjs",
+  "type": "module",
   "bugs": {
     "url": "https://github.com/VirtusDakura/daily-accountability-bot/issues"
   },
