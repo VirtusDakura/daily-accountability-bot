@@ -7,7 +7,7 @@ services:
     env: node
     plan: free
     buildCommand: npm install
-    startCommand: npm start
+    startCommand: node src/index.js
     envVars:
       - key: NODE_ENV
         value: production
@@ -17,9 +17,8 @@ services:
         sync: false  # Set manually in Render dashboard
       - key: PHONE_NUMBER_ID
         sync: false
-      - key: VERIFY_TOKEN
-        sync: false
       - key: ALLOWED_PHONE
         sync: false
       - key: REMINDER_TIME
         value: "0 20 * * *"
+
